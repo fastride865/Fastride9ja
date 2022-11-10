@@ -1,0 +1,1178 @@
+<?php
+
+namespace App\Http\Controllers\Merchant;
+
+use App\Http\Controllers\Helper\EmailTemplates;
+use App\Http\Controllers\Helper\HolderController;
+use App\Mail\UserInvoiceEmail;
+use App\Mail\UserSignup;
+use App\Mail\Welcome;
+use App\Models\Booking;
+use App\Models\CustomerSupport;
+use App\Models\Driver;
+use App\Models\DriverAccount;
+use App\Models\EmailConfig;
+use App\Models\EmailTemplate;
+use App\Models\LanguageEmailTemplate;
+use App\Models\User;
+use App\Traits\MailTrait;
+use Illuminate\Http\Request;
+use App\Http\Controllers\Controller;
+use Auth;
+use File;
+use Mail;
+use PHPMailer\PHPMailer\PHPMailer;
+use PHPMailer\PHPMailer\Exception;
+use DB;
+use App;
+use App\Traits\ImageTrait;
+
+class emailTemplateBackupController extends Controller
+{
+    use ImageTrait, MailTrait;
+
+    public function index()
+    {
+        $checkPermission =  check_permission(1,'view_email_configurations');
+        if ($checkPermission['isRedirect']){
+            return  $checkPermission['redirectBack'];
+        }
+        $merchant_id = Auth::user('merchant')->parent_id != 0 ? Auth::user('merchant')->parent_id : Auth::user('merchant')->id;
+        $configuration = EmailConfig::where('merchant_id', '=', $merchant_id)->first();
+        $template = EmailTemplate::where('merchant_id', '=', $merchant_id)->get();
+
+        if (!empty($template) && $template->isNotEmpty() && count($template) > 0) {
+            $event = array();
+            foreach ($template as $k => $v) {
+                $logo = json_decode($v->logo);
+                $event[$v->template_name]['logo'] = isset($logo->filename) ? $logo->filename : null;
+                $event[$v->template_name]['logo_align'] = isset($logo->alignment) ? $logo->alignment : null;
+
+                if (!empty($v->image)) {
+                    $image = json_decode($v->image);
+                    $event[$v->template_name]['image'] = $image->filename;
+                    $event[$v->template_name]['image_align'] = $image->alignment;
+                }
+//                if (!empty($v->heading)) {
+//                    $heading = json_decode($v->heading);
+//                    $event[$v->template_name]['heading'] = $heading->text;
+//                }
+//                if (!empty($v->subheading)) {
+//                    $subheading = json_decode($v->subheading);
+//                    $event[$v->template_name]['subheading'] = $subheading->text;
+//                }
+//                if (!empty($v->message)) {
+//                    $message = json_decode($v->message);
+//                    $event[$v->template_name]['message'] = $message->text;
+//                }
+                if (!empty($v->social_links)) {
+                    $links = json_decode($v->social_links);
+                    $event[$v->template_name]['social_links'] = $links->links;
+                }
+
+            }
+            $template['event'] = $event;
+        }
+        $welcome = EmailTemplate::where([['merchant_id', '=', $merchant_id],['template_name','=','welcome']])->first();
+        return view('merchant.random.emailtemplate', compact('template', 'configuration','welcome'));
+    }
+
+    public function store(Request $request)
+    {
+        $checkPermission =  check_permission(1,'edit_email_configurations');
+        $merchant_id = get_merchant_id();
+        $request->validate([
+            'host' => 'required',
+            'port' => 'required',
+            'username' => 'required',
+            'password' => 'required',
+            'encryption' => 'required'
+        ]);
+        if ($checkPermission['isRedirect']){
+            return  $checkPermission['redirectBack'];
+        }
+        DB::beginTransaction();
+        try {
+            $welcomeDetails = [];
+            $invoiceDetails = [];
+            if (isset($request->logo)){
+                $logofilename = $this->uploadImage('logo', 'email');
+                $logo = json_encode(array('filename' => $logofilename, 'alignment' => $request->logo_align));
+                $log = array('logo' => $logo);
+                $welcomeDetails = array_merge($welcomeDetails,$log);
+            }
+            if (!empty($request->image)) {
+                $imagefilename = $this->uploadImage('image', 'email');
+                $image = json_encode(array('filename' => $imagefilename, 'alignment' => 'center'));
+                $img = array('image' => $image);
+                $welcomeDetails = array_merge($welcomeDetails,$img);
+            }
+            if (isset($request->heading)) {
+                $heading = json_encode(array('text' => $request->heading, 'alignment' => 'center'));
+                $head = array('heading' => $heading);
+                $welcomeDetails = array_merge($welcomeDetails,$head);
+            }
+            if (isset($request->heading)) {
+                $subheading = json_encode(array('text' => $request->subheading, 'alignment' => 'center'));
+                $subHead = array('subheading' => $subheading);
+                $welcomeDetails = array_merge($welcomeDetails,$subHead);
+            }
+            if (isset($request->heading)) {
+                $message = json_encode(array('text' => $request->textmessage, 'alignment' => 'center'));
+                $msg = array('message' => $message);
+                $welcomeDetails = array_merge($welcomeDetails,$msg);
+            }
+            if (isset($request->socialLinks)) {
+                $links = json_encode(array('links' => $request->socialLinks, 'alignment' => 'center'));
+                $link = array('social_links' => $links);
+                $invoiceDetails = array_merge($invoiceDetails,$link);
+            }
+            if (isset($request->invoice_logo)){
+                $logofilename = $this->uploadImage('invoice_logo', 'email');
+                $logo = json_encode(array('filename' => $logofilename, 'alignment' => $request->logo_align));
+                $log = array('logo' => $logo);
+                $invoiceDetails = array_merge($invoiceDetails,$log);
+            }
+            if(!empty($welcomeDetails)){
+                $email_template = EmailTemplate::updateOrCreate([
+                    'merchant_id' => $merchant_id,
+                    'template_name' => 'welcome',
+                ], $welcomeDetails);
+                $this->SaveLanguageEmailTemplate($merchant_id, $email_template->id, $request->heading, $request->subheading, $request->textmessage);
+            }
+            if(!empty($invoiceDetails)){
+                EmailTemplate::updateOrCreate([
+                    'merchant_id' => $merchant_id,
+                    'template_name' => 'invoice',
+                ], $invoiceDetails);
+            }
+            EmailConfig::updateOrCreate([
+                'merchant_id' => $merchant_id,
+            ], [
+                'host' => $request->host,
+                'port' => $request->port,
+                'username' => $request->username,
+                'password' => $request->password,
+                'encryption' => $request->encryption,
+                'driver' => 'smtp',
+            ]);
+        } catch (\Exception $e) {
+            $message = $e->getMessage();
+            p($message);
+            // Rollback Transaction
+            DB::rollback();
+        }
+        DB::commit();
+        return redirect()->back()->withSuccess(trans("common.email").' '.trans("common.configuration").' '.trans("common.saved_successfully"));
+    }
+
+    public function SaveLanguageEmailTemplate($merchant_id, $email_template_id, $heading, $subheading, $message)
+    {
+        LanguageEmailTemplate::updateOrCreate([
+            'merchant_id' => $merchant_id, 'locale' => App::getLocale(), 'email_template_id' => $email_template_id
+        ], [
+            'heading' => $heading,
+            'subheading' => $subheading,
+            'message' =>$message,
+        ]);
+    }
+
+//    public function configstore(Request $request)
+//    {
+//        $merchant_id = Auth::user('merchant')->parent_id != 0 ? Auth::user('merchant')->parent_id : Auth::user('merchant')->id;
+//        $request->validate([
+//            'host' => 'required',
+//            'port' => 'required',
+//            'username' => 'required',
+//            'password' => 'required',
+//            'encryption' => 'required'
+//        ]);
+//
+//        DB::beginTransaction();
+//        try {
+//            EmailConfig::updateOrCreate([
+//                'merchant_id' => $merchant_id,
+//            ], [
+//                'host' => $request->host,
+//                'port' => $request->port,
+//                'username' => $request->username,
+//                'password' => $request->password,
+//                'encryption' => $request->encryption,
+//                'driver' => 'smtp',
+//            ]);
+//        } catch (\Exception $e) {
+//            $message = $e->getMessage();
+//            p($message);
+//            // Rollback Transaction
+//            DB::rollback();
+//        }
+//        DB::commit();
+//        return redirect()->back()->with('success',trans('admin.email_configuration_updated'));
+//    }
+
+    public function WelcomeOnSignup($user_id = null, $template_name = null)
+    {
+
+        $user_obj = User::findorfail($user_id);
+        $template_data = EmailTemplate::where('merchant_id', '=', $user_obj->merchant_id)
+            ->where('template_name', '=', $template_name)->first();
+        $configuration = EmailConfig::where('merchant_id', '=', $user_obj->merchant_id)->first();
+        if (!empty($template_data) && !empty($configuration)):
+            // $this->SetEmailConfig($user_obj->merchant_id);
+            if (!empty($template_data->logo)) {
+                $logo = json_decode($template_data->logo);
+                $template_data['logo'] = $logo->filename;
+                $template_data['logo_align'] = $logo->alignment;
+            }
+            if (!empty($template_data->image)) {
+                $image = json_decode($template_data->image);
+                $template_data['image'] = $image->filename;
+                $template_data['image_align'] = $image->alignment;
+            }
+//            if (!empty($template_data->heading)) {
+//                $heading = json_decode($template_data->heading);
+//                $template_data['heading'] = $heading->text;
+//                $template_data['heading_align'] = $heading->alignment;
+//            }
+//            if (!empty($template_data->subheading)) {
+//                $subheading = json_decode($template_data->subheading);
+//                $template_data['subheading'] = $subheading->text;
+//                $template_data['subheading_align'] = $subheading->alignment;
+//            }
+//            if (!empty($template_data->message)) {
+//                $message = json_decode($template_data->message);
+//                $template_data['message'] = $message->text;
+//                $template_data['message_align'] = $message->alignment;
+//            }
+            $message = '<!doctype html>
+                <html xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
+                    <head>
+                    <title> </title>
+                    <!--[if !mso]><!-- -->
+                    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+                    <!--<![endif]-->
+                    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+                    <meta name="viewport" content="width=device-width, initial-scale=1">
+                    <style type="text/css">
+                        #outlook a {
+                            padding: 0;
+                        }
+
+                        .ReadMsgBody {
+                            width: 100%;
+                        }
+
+                        .ExternalClass {
+                            width: 100%;
+                        }
+
+                        .ExternalClass * {
+                            line-height: 100%;
+                        }
+
+                        body {
+                            margin: 0;
+                            padding: 0;
+                            -webkit-text-size-adjust: 100%;
+                            -ms-text-size-adjust: 100%;
+                        }
+
+                        table,
+                        td {
+                            border-collapse: collapse;
+                            mso-table-lspace: 0pt;
+                            mso-table-rspace: 0pt;
+                        }
+
+                        img {
+                            border: 0;
+                            height: auto;
+                            line-height: 100%;
+                            outline: none;
+                            text-decoration: none;
+                            -ms-interpolation-mode: bicubic;
+                        }
+
+                        p {
+                            display: block;
+                            margin: 13px 0;
+                        }
+                    </style>
+                    <!--[if !mso]><!-->
+                    <style type="text/css">
+                        @media only screen and (max-width:480px) {
+                            @-ms-viewport {
+                                width: 320px;
+                            }
+                            @viewport {
+                                width: 320px;
+                            }
+                        }
+                    </style>
+                    <link href="https://fonts.googleapis.com/css?family=Ubuntu:300,400,500,700" rel="stylesheet" type="text/css">
+                    <style type="text/css">
+                        @import url(https://fonts.googleapis.com/css?family=Ubuntu:300,400,500,700);
+                    </style>
+                    <style type="text/css">
+                        @media only screen and (min-width:480px) {
+                            .mj-column-per-100 {
+                                width: 100% !important;
+                                max-width: 100%;
+                            }
+                            .mj-column-per-50 {
+                                width: 50% !important;
+                                max-width: 50%;
+                            }
+                            .mj-column-per-33 {
+                                width: 33.333333333333336% !important;
+                                max-width: 33.333333333333336%;
+                            }
+                        }
+                    </style>
+                    <style type="text/css">
+                        @media only screen and (max-width:480px) {
+                            table.full-width-mobile {
+                                width: 100% !important;
+                            }
+                            td.full-width-mobile {
+                                width: auto !important;
+                            }
+                        }
+                    </style>
+                </head>
+                    <body style="background-color:#ccd3e0;">
+                        <div style="background-color:#ccd3e0;">
+                    <div style="background:#ffffff;background-color:#ffffff;Margin:0px auto;max-width:600px;">
+                        <table align="center" border="0" cellpadding="0" cellspacing="0" role="presentation" style="background:#ffffff;background-color:#ffffff;width:100%;">
+                            <tbody>
+                            <tr>
+                                <td style="direction:ltr;font-size:0px;padding:20px 0;padding-bottom:20px;padding-top:20px;text-align:center;vertical-align:top;">
+                                    <div class="mj-column-per-100 outlook-group-fix" style="font-size:13px;text-align:left;direction:ltr;display:inline-block;vertical-align:top;width:100%;">
+                                        <table border="0" cellpadding="0" cellspacing="0" role="presentation" style="vertical-align:top;" width="100%">
+                                            <tr>
+                                                <td align="center" style="font-size:0px;padding:10px 25px;padding-top:0;padding-right:0px;padding-bottom:0px;padding-left:0px;word-break:break-word;">
+                                                    <table border="0" cellpadding="0" cellspacing="0" role="presentation" style="border-collapse:collapse;border-spacing:0px;">
+                                                        <tbody>
+                                                        <tr>
+                                                            <td style="width:200px;"> <img alt="" height="auto" src="' . get_image($template_data['logo'], 'email', $user_obj->merchant_id) . '" style="border:none;display:block;outline:none;text-decoration:none;height:auto;width:100%;" width="200" /> </td>
+                                                        </tr>
+                                                        </tbody>
+                                                    </table>
+                                                </td>
+                                            </tr>
+                                        </table>
+                                    </div>
+                                </td>
+                            </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div style="background:#356cc7;background-color:#356cc7;Margin:0px auto;max-width:600px;">
+                        <table align="center" border="0" cellpadding="0" cellspacing="0" role="presentation" style="background:#356cc7;background-color:#356cc7;width:100%;">
+                            <tbody>
+                            <tr>
+                                <td style="direction:ltr;font-size:0px;padding:20px 0;padding-bottom:0px;padding-top:0;text-align:center;vertical-align:top;">
+                                    <div class="mj-column-per-100 outlook-group-fix" style="font-size:13px;text-align:left;direction:ltr;display:inline-block;vertical-align:top;width:100%;">
+                                        <table border="0" cellpadding="0" cellspacing="0" role="presentation" style="vertical-align:top;" width="100%">
+                                            <tr>
+                                                <td align="center" style="font-size:0px;padding:10px 25px;padding-top:28px;padding-right:25px;padding-bottom:18px;padding-left:25px;word-break:break-word;">
+                                                    <div style="font-family:Ubuntu, Helvetica, Arial, sans-serif;font-size:27px;line-height:1;text-align:center;color:#ABCDEA;">
+                                                        ' . $template_data->Heading . '
+                                                        <p style="font-size:16px; color:white">' . $user_obj->UserName . '</p>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        </table>
+                                    </div>
+                                </td>
+                            </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div style="background:#FFFFFF;background-color:#FFFFFF;Margin:0px auto;max-width:600px;">
+                        <img class="map_img" style="max-width:600px" src="' . get_image($template_data['image'], 'email', $user_obj->merchant_id) . '">
+                    </div>
+
+                    <div style="background:#356CC7;background-color:#356CC7;Margin:0px auto;max-width:600px;">
+                        <table align="center" border="0" cellpadding="0" cellspacing="0" role="presentation" style="width:100%;">
+                            <tbody>
+                            <tr>
+                                <td align="center">
+                                    <h2 class="apporio_h2">' . $template_data->Subheading . '</h2>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td>
+                                    <table align="center" cellpadding="0" cellspacing="0" border="0">
+                                        <tr>
+                                            <td style="direction:ltr;font-size:0px;padding:20px 0;padding-bottom:20px;padding-top:20px;text-align:center;vertical-align:top;">
+                                                <div style="font-family:Ubuntu, Helvetica, Arial, sans-serif;font-size:small;line-height:1;text-align:center;color:white;">
+                                                    <p>' . $template_data->Message . '</p>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    </table>
+                                </td>
+                            </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div style="background:#356CC7;background-color:#356CC7;Margin:0px auto;max-width:600px;">
+                        <table align="center" border="0" cellpadding="0" cellspacing="0" role="presentation"
+                               style="background:#356CC7;background-color:#356CC7;width:100%;">
+                            <tbody>
+                            <tr>
+                                <td style="direction:ltr;font-size:0px;padding:20px 0;padding-bottom:20px;padding-top:20px;text-align:center;vertical-align:top;">
+                                    <div style="font-family:Ubuntu, Helvetica, Arial, sans-serif;font-size:1rem;line-height:1;text-align:center;color:white;">
+                                        Hope you will enjoy our services
+                                    </div>
+                                </td>
+                            </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div style="background:#356CC7;background-color:#356CC7;Margin:0px auto;max-width:600px;">
+
+                    </div>
+                    <div style="background:#356cc7;background-color:#356cc7;Margin:0px auto;max-width:600px;">
+                        <table align="center" border="0" cellpadding="0" cellspacing="0" role="presentation" style="background:#356cc7;background-color:#356cc7;width:100%;">
+                            <tbody>
+                            <tr>
+                                <td style="direction:ltr;font-size:0px;padding:20px 0;padding-bottom:5px;padding-top:0;text-align:center;vertical-align:top;">
+                                    <div class="mj-column-per-100 outlook-group-fix" style="font-size:13px;text-align:left;direction:ltr;display:inline-block;vertical-align:top;width:100%;">
+                                        <table border="0" cellpadding="0" cellspacing="0" role="presentation" style="vertical-align:top;" width="100%">
+                                            <tr>
+                                                <td style="font-size:0px;padding:10px 25px;padding-top:0;padding-right:20px;padding-bottom:0px;padding-left:20px;word-break:break-word;">
+                                                    <p style="border-top:solid 2px #ffffff;font-size:1;margin:0px auto;width:100%;"> </p>
+                                                </td>
+                                            </tr>
+                                            <tr>
+                                                <td align="center" style="font-size:0px;padding:10px 25px;padding-top:20px;padding-right:25px;padding-bottom:20px;padding-left:25px;word-break:break-word;">
+                                                    <div style="font-family:Helvetica;font-size:15px;line-height:1;text-align:center;color:#FFFFFF;"> Thanks <br/><br/> <span style="font-size:20px">' . $user_obj->Merchant->BusinessName . '</span> </div>
+                                                </td>
+                                            </tr>
+                                        </table>
+                                    </div>
+                                </td>
+                            </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                    </body>
+                </html>';
+            $response = $this->sendMail($configuration, $user_obj->email, $message, 'welcome', $user_obj->Merchant->BusinessName);
+        endif;
+    }
+
+    public function WelcomeOnSignupDriver($driver_id = null, $template_name = null)
+    {
+        $user_obj = Driver::findorfail($driver_id);
+        $template_data = EmailTemplate::where('merchant_id', '=', $user_obj->merchant_id)
+            ->where('template_name', '=', $template_name)->first();
+        $configuration = EmailConfig::where('merchant_id', '=', $user_obj->merchant_id)->first();
+        if (!empty($template_data) && !empty($configuration)):
+            // $this->SetEmailConfig($user_obj->merchant_id);
+            if (!empty($template_data->logo)) {
+                $logo = json_decode($template_data->logo);
+                $template_data['logo'] = $logo->filename;
+                $template_data['logo_align'] = $logo->alignment;
+            }
+
+            if (!empty($template_data->image)) {
+                $image = json_decode($template_data->image);
+                $template_data['image'] = $image->filename;
+                $template_data['image_align'] = $image->alignment;
+            }
+//            if (!empty($template_data->heading)) {
+//                $heading = json_decode($template_data->heading);
+//                $template_data['heading'] = $heading->text;
+//                $template_data['heading_align'] = $heading->alignment;
+//            }
+//            if (!empty($template_data->subheading)) {
+//                $subheading = json_decode($template_data->subheading);
+//                $template_data['subheading'] = $subheading->text;
+//                $template_data['subheading_align'] = $subheading->alignment;
+//            }
+//            if (!empty($template_data->message)) {
+//                $message = json_decode($template_data->message);
+//                $template_data['message'] = $message->text;
+//                $template_data['message_align'] = $message->alignment;
+//            }
+            $message = '<!doctype html>
+                <html xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
+                    <head>
+                    <title> </title>
+                    <!--[if !mso]><!-- -->
+                    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+                    <!--<![endif]-->
+                    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+                    <meta name="viewport" content="width=device-width, initial-scale=1">
+                    <style type="text/css">
+                        #outlook a {
+                            padding: 0;
+                        }
+
+                        .ReadMsgBody {
+                            width: 100%;
+                        }
+
+                        .ExternalClass {
+                            width: 100%;
+                        }
+
+                        .ExternalClass * {
+                            line-height: 100%;
+                        }
+
+                        body {
+                            margin: 0;
+                            padding: 0;
+                            -webkit-text-size-adjust: 100%;
+                            -ms-text-size-adjust: 100%;
+                        }
+
+                        table,
+                        td {
+                            border-collapse: collapse;
+                            mso-table-lspace: 0pt;
+                            mso-table-rspace: 0pt;
+                        }
+
+                        img {
+                            border: 0;
+                            height: auto;
+                            line-height: 100%;
+                            outline: none;
+                            text-decoration: none;
+                            -ms-interpolation-mode: bicubic;
+                        }
+
+                        p {
+                            display: block;
+                            margin: 13px 0;
+                        }
+                    </style>
+                    <!--[if !mso]><!-->
+                    <style type="text/css">
+                        @media only screen and (max-width:480px) {
+                            @-ms-viewport {
+                                width: 320px;
+                            }
+                            @viewport {
+                                width: 320px;
+                            }
+                        }
+                    </style>
+                    <link href="https://fonts.googleapis.com/css?family=Ubuntu:300,400,500,700" rel="stylesheet" type="text/css">
+                    <style type="text/css">
+                        @import url(https://fonts.googleapis.com/css?family=Ubuntu:300,400,500,700);
+                    </style>
+                    <style type="text/css">
+                        @media only screen and (min-width:480px) {
+                            .mj-column-per-100 {
+                                width: 100% !important;
+                                max-width: 100%;
+                            }
+                            .mj-column-per-50 {
+                                width: 50% !important;
+                                max-width: 50%;
+                            }
+                            .mj-column-per-33 {
+                                width: 33.333333333333336% !important;
+                                max-width: 33.333333333333336%;
+                            }
+                        }
+                    </style>
+                    <style type="text/css">
+                        @media only screen and (max-width:480px) {
+                            table.full-width-mobile {
+                                width: 100% !important;
+                            }
+                            td.full-width-mobile {
+                                width: auto !important;
+                            }
+                        }
+                    </style>
+                </head>
+                    <body style="background-color:#ccd3e0;">
+                        <div style="background-color:#ccd3e0;">
+                    <div style="background:#ffffff;background-color:#ffffff;Margin:0px auto;max-width:600px;">
+                        <table align="center" border="0" cellpadding="0" cellspacing="0" role="presentation" style="background:#ffffff;background-color:#ffffff;width:100%;">
+                            <tbody>
+                            <tr>
+                                <td style="direction:ltr;font-size:0px;padding:20px 0;padding-bottom:20px;padding-top:20px;text-align:center;vertical-align:top;">
+                                    <div class="mj-column-per-100 outlook-group-fix" style="font-size:13px;text-align:left;direction:ltr;display:inline-block;vertical-align:top;width:100%;">
+                                        <table border="0" cellpadding="0" cellspacing="0" role="presentation" style="vertical-align:top;" width="100%">
+                                            <tr>
+                                                <td align="center" style="font-size:0px;padding:10px 25px;padding-top:0;padding-right:0px;padding-bottom:0px;padding-left:0px;word-break:break-word;">
+                                                    <table border="0" cellpadding="0" cellspacing="0" role="presentation" style="border-collapse:collapse;border-spacing:0px;">
+                                                        <tbody>
+                                                        <tr>
+                                                            <td style="width:200px;"> <img alt="" height="auto" src="' . get_image($template_data['logo'], 'email', $user_obj->merchant_id) . '" style="border:none;display:block;outline:none;text-decoration:none;height:auto;width:100%;" width="200" /> </td>
+                                                        </tr>
+                                                        </tbody>
+                                                    </table>
+                                                </td>
+                                            </tr>
+                                        </table>
+                                    </div>
+                                </td>
+                            </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div style="background:#356cc7;background-color:#356cc7;Margin:0px auto;max-width:600px;">
+                        <table align="center" border="0" cellpadding="0" cellspacing="0" role="presentation" style="background:#356cc7;background-color:#356cc7;width:100%;">
+                            <tbody>
+                            <tr>
+                                <td style="direction:ltr;font-size:0px;padding:20px 0;padding-bottom:0px;padding-top:0;text-align:center;vertical-align:top;">
+                                    <div class="mj-column-per-100 outlook-group-fix" style="font-size:13px;text-align:left;direction:ltr;display:inline-block;vertical-align:top;width:100%;">
+                                        <table border="0" cellpadding="0" cellspacing="0" role="presentation" style="vertical-align:top;" width="100%">
+                                            <tr>
+                                                <td align="center" style="font-size:0px;padding:10px 25px;padding-top:28px;padding-right:25px;padding-bottom:18px;padding-left:25px;word-break:break-word;">
+                                                    <div style="font-family:Ubuntu, Helvetica, Arial, sans-serif;font-size:27px;line-height:1;text-align:center;color:#ABCDEA;">
+                                                        ' . $template_data->Heading . '
+                                                        <p style="font-size:16px; color:white">' . $user_obj->first_name . ' ' . $user_obj->last_name . '</p>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        </table>
+                                    </div>
+                                </td>
+                            </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div style="background:#FFFFFF;background-color:#FFFFFF;Margin:0px auto;max-width:600px;">
+                        <img class="map_img" style="max-width:600px" src="' . get_image($template_data['image'], 'email', $user_obj->merchant_id) . '">
+                    </div>
+
+                    <div style="background:#356CC7;background-color:#356CC7;Margin:0px auto;max-width:600px;">
+                        <table align="center" border="0" cellpadding="0" cellspacing="0" role="presentation" style="width:100%;">
+                            <tbody>
+                            <tr>
+                                <td align="center">
+                                    <h2 class="apporio_h2">' . $template_data->Subheading . '</h2>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td>
+                                    <table align="center" cellpadding="0" cellspacing="0" border="0">
+                                        <tr>
+                                            <td style="direction:ltr;font-size:0px;padding:20px 0;padding-bottom:20px;padding-top:20px;text-align:center;vertical-align:top;">
+                                                <div style="font-family:Ubuntu, Helvetica, Arial, sans-serif;font-size:small;line-height:1;text-align:center;color:white;">
+                                                    <p>' . $template_data->Message . '</p>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    </table>
+                                </td>
+                            </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div style="background:#356CC7;background-color:#356CC7;Margin:0px auto;max-width:600px;">
+                        <table align="center" border="0" cellpadding="0" cellspacing="0" role="presentation"
+                               style="background:#356CC7;background-color:#356CC7;width:100%;">
+                            <tbody>
+                            <tr>
+                                <td style="direction:ltr;font-size:0px;padding:20px 0;padding-bottom:20px;padding-top:20px;text-align:center;vertical-align:top;">
+                                    <div style="font-family:Ubuntu, Helvetica, Arial, sans-serif;font-size:1rem;line-height:1;text-align:center;color:white;">
+                                        Hope you will enjoy our services
+                                    </div>
+                                </td>
+                            </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div style="background:#356CC7;background-color:#356CC7;Margin:0px auto;max-width:600px;">
+
+                    </div>
+                    <div style="background:#356cc7;background-color:#356cc7;Margin:0px auto;max-width:600px;">
+                        <table align="center" border="0" cellpadding="0" cellspacing="0" role="presentation" style="background:#356cc7;background-color:#356cc7;width:100%;">
+                            <tbody>
+                            <tr>
+                                <td style="direction:ltr;font-size:0px;padding:20px 0;padding-bottom:5px;padding-top:0;text-align:center;vertical-align:top;">
+                                    <div class="mj-column-per-100 outlook-group-fix" style="font-size:13px;text-align:left;direction:ltr;display:inline-block;vertical-align:top;width:100%;">
+                                        <table border="0" cellpadding="0" cellspacing="0" role="presentation" style="vertical-align:top;" width="100%">
+                                            <tr>
+                                                <td style="font-size:0px;padding:10px 25px;padding-top:0;padding-right:20px;padding-bottom:0px;padding-left:20px;word-break:break-word;">
+                                                    <p style="border-top:solid 2px #ffffff;font-size:1;margin:0px auto;width:100%;"> </p>
+                                                </td>
+                                            </tr>
+                                            <tr>
+                                                <td align="center" style="font-size:0px;padding:10px 25px;padding-top:20px;padding-right:25px;padding-bottom:20px;padding-left:25px;word-break:break-word;">
+                                                    <div style="font-family:Helvetica;font-size:15px;line-height:1;text-align:center;color:#FFFFFF;"> Thanks <br/><br/> <span style="font-size:20px">' . $user_obj->Merchant->BusinessName . '</span> </div>
+                                                </td>
+                                            </tr>
+                                        </table>
+                                    </div>
+                                </td>
+                            </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                    </body>
+                </html>';
+            $response = $this->sendMail($configuration, $user_obj->email, $message, 'welcome', $user_obj->Merchant->BusinessName);
+        endif;
+    }
+
+
+    public function CustomerSupportSendEmail(CustomerSupport $customerSupport)
+    {
+        $template = new EmailTemplates();
+        $message = $template->CustomerSupportTemplate($customerSupport);
+        $configuration = EmailConfig::where('merchant_id', '=', $customerSupport->merchant_id)->first();
+        if (!empty($configuration)):
+            $response = $this->sendMail($configuration, $customerSupport->Merchant->Configuration->report_issue_email, $message, 'customer_support', NULL, $customerSupport->phone);
+        endif;
+    }
+
+    public function DriverBillEmail(DriverAccount $driver_account)
+    {
+        $template = new EmailTemplates();
+        $message = $template->DriverBillTemplate($driver_account);
+        $merchant_config = $driver_account->Driver->Merchant->Configuration;
+        $configuration = EmailConfig::where('merchant_id', '=', $driver_account->Driver->merchant_id)->first();
+        if (!empty($configuration)):
+            $response = $this->sendMail($configuration, $driver_account->Driver->email, $message, 'driver_bill_settle');
+        endif;
+    }
+
+    public function DriverSignupEmailOtp($driver_email = null, $otp = null)
+    {
+        $template = new EmailTemplates();
+        $message = trans("$string_file.otp_for_verification") . " " . $otp;
+        $message = $template->DriverSignUpOtpTemplate($message);
+        $configuration = EmailConfig::where('merchant_id', '=', request()->merchant_id)->first();
+
+        if (!empty($configuration)):
+            $response = $this->sendMail($configuration, $driver_email, $message, 'signup_otp_varification');
+        endif;
+
+    }
+
+    public function UserSignupEmailOtp($user_email = null, $otp = null)
+    {
+        $template = new EmailTemplates();
+        $message = trans("$string_file.otp_for_verification") . " " . $otp;
+        $message = $template->SignUpOtpTemplate($message);
+        $configuration = EmailConfig::where('merchant_id', '=', request()->merchant_id)->first();
+        if (!empty($configuration)):
+            $response = $this->sendMail($configuration, $user_email, $message, 'signup_otp_varification');
+        endif;
+
+    }
+
+    public function ForgotPasswordEmail(User $user, $otp = null)
+    {
+        $template = new EmailTemplates();
+        $message = trans("$string_file.otp_for_verification") . " " . $otp;
+        $message = $template->ForgotPasswordTemplate($user, $message);
+        $configuration = EmailConfig::where('merchant_id', '=', $user->merchant_id)->first();
+        if (!empty($configuration)):
+            $response = $this->sendMail($configuration, $user->email, $message, 'forgot_password');
+
+        endif;
+    }
+
+    public function ForgotPasswordEmailDriver(Driver $driver, $otp = null)
+    {
+        $template = new EmailTemplates();
+        $message = trans("$string_file.otp_for_verification") . " " . $otp;
+        $message = $template->ForgotPasswordTemplateDriver($driver, $message);
+        $configuration = EmailConfig::where('merchant_id', '=', $driver->merchant_id)->first();
+        if (!empty($configuration)):
+            $response = $this->sendMail($configuration, $driver->email, $message, 'forgot_password');
+        endif;
+
+    }
+
+    public function SendInvoiceEmail($template_name = null, Booking $booking)
+    {
+        $price_details = json_decode($booking->BookingDetail->bill_details, true);
+        $holder = [];
+        if (!empty($price_details)):
+            $holder = HolderController::PriceDetailHolder($price_details, $booking->id);
+            array_shift($holder);
+        endif;
+        $booking->holder = $holder;
+        $booking->map_image = $booking->map_image . "&zoom=12&size=600x300";
+        $template = $booking;
+        $currency = $booking->CountryArea->Country->isoCode;
+
+        $temp = EmailTemplate::where('merchant_id', '=', $booking->Merchant->id)
+            ->where('template_name', '=', $template_name)->first();
+        $configuration = EmailConfig::where('merchant_id', '=', $booking->Merchant->id)->first();
+        $template['name'] = $booking->Merchant->BusinessName;
+        if (!empty($temp) && !empty($configuration)):
+            if (!empty($temp->logo)) {
+                $logo = json_decode($temp->logo);
+                $template['logo'] = $logo->filename;
+                $template['logo_align'] = $logo->alignment;
+            }
+
+            if (!empty($temp->image)) {
+                $image = json_decode($temp->image);
+                $template['image'] = $image->filename;
+                $template['image_align'] = $image->alignment;
+            }
+            if (!empty($temp->heading)) {
+                $heading = json_decode($temp->heading);
+                $template['heading'] = $heading->text;
+                $template['heading_align'] = $heading->alignment;
+            }
+            if (!empty($temp->subheading)) {
+                $subheading = json_decode($temp->subheading);
+                $template['subheading'] = $subheading->text;
+                $template['subheading_align'] = $subheading->alignment;
+            }
+            if (!empty($temp->message)) {
+                $message = json_decode($temp->message);
+                $template['message'] = $message->text;
+                $template['message_align'] = $message->alignment;
+            }
+        endif;
+            $cash_string = $template->payment_method_id == 1 ? "CASH" : "CARD/ONLINE";
+            $message = '<!doctype html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+    <head>
+        <title></title>
+        <!--[if !mso]><!-- -->
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <!--<![endif]-->
+        <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <link href="https://stackpath.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css" rel="stylesheet" integrity="sha384-wvfXpqpZZVQGK6TAh5PVlGOfQNHSoD2xbE+QkPxCAFlNEevoEH3Sl0sibVcOQVnN" crossorigin="anonymous">
+        <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css"
+              integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T" crossorigin="anonymous">
+        <style type="text/css">
+            #outlook a {
+                padding: 0;
+            }
+            .ReadMsgBody {
+                width: 100%;
+            }
+            .ExternalClass {
+                width: 100%;
+            }
+            .ExternalClass * {
+                line-height: 100%;
+            }
+            body {
+                margin: 0;
+                padding: 0;
+                -webkit-text-size-adjust: 100%;
+                -ms-text-size-adjust: 100%;
+            }
+            table,
+            td {
+                border-collapse: collapse;
+                mso-table-lspace: 0pt;
+                mso-table-rspace: 0pt;
+            }
+            img {
+                border: 0;
+                height: auto;
+                line-height: 100%;
+                outline: none;
+                text-decoration: none;
+                -ms-interpolation-mode: bicubic;
+            }
+            p {
+                display: block;
+                margin: 13px 0;
+            }
+        </style>
+        <!--[if !mso]><!-->
+        <style type="text/css">
+            @media only screen and (max-width: 480px) {
+                @-ms-viewport {
+                    width: 320px;
+                }
+                @viewport {
+                    width: 320px;
+                }
+            }
+        </style>
+        <link href="https://fonts.googleapis.com/css?family=Ubuntu:300,400,500,700" rel="stylesheet" type="text/css">
+        <style type="text/css">
+            @import url(https://fonts.googleapis.com/css?family=Ubuntu:300,400,500,700);
+        </style>
+        <style type="text/css">
+            @media only screen and (min-width: 480px) {
+                .mj-column-per-100 {
+                    width: 100% !important;
+                    max-width: 100%;
+                }
+                .mj-column-per-50 {
+                    width: 50% !important;
+                    max-width: 50%;
+                }
+                .mj-column-per-33 {
+                    width: 33.333333333333336% !important;
+                    max-width: 33.333333333333336%;
+                }
+            }
+        </style>
+        <style type="text/css">
+            @media only screen and (max-width: 480px) {
+                table.full-width-mobile {
+                    width: 100% !important;
+                }
+                td.full-width-mobile {
+                    width: auto !important;
+                }
+            }
+        </style>
+    </head>
+    <body style="background-color:#ccd3e0;font-family:Ubuntu, Helvetica, Arial, sans-serif;">
+    <div style="background-color:#ccd3e0;">
+        <div style="background:#356cc7;background-color:#356cc7;Margin:0px auto;max-width:600px;">
+            <table align="center" border="0" cellpadding="0" cellspacing="0" role="presentation"
+                   style="width:100%;">
+                <tbody>
+                <tr>
+                    <td>
+                        <div class="mj-column-per-100 outlook-group-fix"
+                             style="font-size:13px;text-align:left;direction:ltr;display:inline-block;vertical-align:top;width:100%;">
+                            <table border="0" cellpadding="0" cellspacing="0" role="presentation"
+                                   style="vertical-align:top;margin-top: 20px;margin-bottom: 20px;" width="100%">
+                                   <tr>
+                                    <td align="center">
+                                        <img alt="" width="100px" height="100px" src="' . get_image($booking->Merchant->BusinessLogo,'business_logo',$booking->merchant_id) . '"/>
+                                    </td>
+                                    <td align="center">
+                                        <div style="font-size:27px;line-height:1;text-align:center;color:#ABCDEA;">
+                                            ' . $template['name'] . ' Payment
+                                            <p style="font-size:16px; color:white">' . $template->User->UserName . '</p>
+                                        </div>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td colspan="2"> <p style="margin-top:20px;border-top:solid 2px #ffffff;width:100%;"></p> </td>
+                                </tr>
+                                <tr>
+                                    <td colspan="2">
+                                        <div style="line-height:1;text-align:center;color:#FFFFFF;">
+                                            <span style="font-size:20px; font-weight:bold">Hope you had a great ride</span>
+                                            <br/><br/> <span style="font-size:15px">Please find the invoice below</span>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </table>
+                        </div>
+                    </td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+        <div style="background:#FFFFFF;background-color:#FFFFFF;Margin:0px auto;max-width:600px;">
+            <img class="map_img" style="max-width:600px"
+                 src="' . $template['map_image'] . '">
+            <table align="center" border="0" cellpadding="0" cellspacing="0" role="presentation"
+                   style="width:100%;">
+                <div class="col-md-12" style="display:flex;margin-top:10px">
+                    <div class="col-md-6" style="text-align:left;"><img src="' . view_config_image('static-images/pinup.png') . '"
+                                                                        width="10%"><span style="font-size:18px"><b>Pickup Location</b></span></div>
+                    <div class="col-md-6" style="text-align:right;"><img src="' . view_config_image('static-images/pindown.png') . '"
+                                                                         width="10%"><span style="font-size:18px"><b>Drop Location</b></span></div>
+                </div>
+                <br/>
+                <div class="col-md-12" style="display:flex;">
+                    <div class="col-md-6" style="text-align:left"><span><b>' . $template->pickup_location . '</b></span></div>
+                    <div class="col-md-6" style="text-align:right"><span><b>' . $template->drop_location . '</b></span>
+                    </div>
+                </div>
+                <div>
+                    <p style="margin-top:10px;border-top:solid 2px black;font-size:1;width:600px;"></p>
+                </div>
+                <div>
+                    <h3 style="margin-top:10px;text-align: center">Fare Breakup</h3>
+                    <p style="margin-top:20px;margin-bottom:20px;border-top:solid 2px black;font-size:1;width:600px;"></p>
+                </div>';
+            foreach ($template->holder as $b) {
+                $message .= '<div class="col-md-12" style="display:flex;padding-left:15px;padding-right:15px;">
+                    <div class="col-md-6" style="font-size:1.1rem;width:50%;">
+                        <span class="float-left">' . $b['highlighted_text'] . '</span></div>
+                    <div class="col-md-6" style="font-size:1.1rem;width:50%;text-align:right;"><span class="float-right">' . $b['value_text'] . '</span></div>
+                </div>
+                <br/>';
+            }
+            // <div class="col-md-12" style="display:flex;padding-left:15px;padding-right:15px;">
+            //     <div class="col-md-6" style="font-size:1.1rem;width:50%;"><span class="float-left"><b>Total fare </b></span></div>
+            //     <div class="col-md-6" style="font-size:1.1rem;width:50%;text-align:right;"><span class="float-right"><b>'.' '.$currency.' '.$template->final_amount_paid.'</b></span></div>
+            // </div>
+            $message .= '
+            <br/>
+            <br/>
+            <div style="Margin:0px auto;max-width:600px;">
+                <table align="center" border="0" cellpadding="0" cellspacing="0" role="presentation"
+                       style="background:#568feb;background-color:#568feb;width:100%;">
+                    <tbody>
+                    <tr>
+                        <td style="direction:ltr;font-size:0px;padding:20px 0;padding-bottom:15px;text-align:center;vertical-align:top;">
+                            <div class="mj-column-per-33 outlook-group-fix"
+                                 style="font-size:13px;text-align:left;direction:ltr;display:inline-block;vertical-align:top;width:100%;">
+                                <table border="0" cellpadding="0" cellspacing="0" role="presentation"
+                                       style="vertical-align:top;" width="100%">
+                                    <tr>
+                                        <td align="center"
+                                            style="font-size:0px;padding:10px 25px;padding-right:25px;padding-bottom:0px;padding-left:25px;word-break:break-word;">
+                                            <div style="font-family:Ubuntu, Helvetica, Arial, sans-serif;font-size:15px;line-height:1;text-align:center;color:#FFFFFF;">
+                                                <strong>Ride Id</strong></div>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td align="center"
+                                            style="font-size:0px;padding:10px 25px;padding-top:10px;padding-right:25px;padding-bottom:20px;padding-left:25px;word-break:break-word;">
+                                            <div style="font-family:Helvetica;font-size:13px;line-height:1;text-align:center;color:#FFFFFF;">
+                                                #' . $template->id . '
+                                            </div>
+                                        </td>
+                                    </tr>
+                                </table>
+                            </div>
+                            <div class="mj-column-per-33 outlook-group-fix"
+                                 style="font-size:13px;text-align:left;direction:ltr;display:inline-block;vertical-align:top;width:100%;">
+                                <table border="0" cellpadding="0" cellspacing="0" role="presentation"
+                                       style="vertical-align:top;" width="100%">
+                                    <tr>
+                                        <td align="center"
+                                            style="font-size:0px;padding:10px 25px;padding-right:25px;padding-bottom:0px;padding-left:25px;word-break:break-word;">
+                                            <div style="font-family:Ubuntu, Helvetica, Arial, sans-serif;font-size:15px;line-height:1;text-align:center;color:#FFFFFF;">
+                                                <strong>Ride Date</strong></div>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td align="center"
+                                            style="font-size:0px;padding:10px 25px;padding-top:10px;padding-right:25px;padding-bottom:20px;padding-left:25px;word-break:break-word;">
+                                            <div style="font-family:Helvetica;font-size:13px;line-height:1;text-align:center;color:#FFFFFF;">
+                                                ' . date('d-m-Y', $template->booking_timestamp) . '
+                                            </div>
+                                        </td>
+                                    </tr>
+                                </table>
+                            </div>
+                            <div class="mj-column-per-33 outlook-group-fix"
+                                 style="font-size:13px;text-align:left;direction:ltr;display:inline-block;vertical-align:top;width:100%;">
+                                <table border="0" cellpadding="0" cellspacing="0" role="presentation"
+                                       style="vertical-align:top;" width="100%">
+                                    <tr>
+                                        <td align="center"
+                                            style="font-size:0px;padding:10px 25px;padding-right:25px;padding-bottom:0px;padding-left:25px;word-break:break-word;">
+                                            <div style="font-family:Ubuntu, Helvetica, Arial, sans-serif;font-size:15px;line-height:1;text-align:center;color:#FFFFFF;">
+                                                <strong>Total bill</strong></div>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td align="center"
+                                            style="font-size:0px;padding:10px 25px;padding-top:10px;padding-right:25px;padding-bottom:20px;padding-left:25px;word-break:break-word;">
+                                            <div style="font-family:Helvetica;font-size:13px;line-height:1;text-align:center;color:#FFFFFF;">' .$currency.' '. $template->final_amount_paid . '
+                                            </div>
+                                        </td>
+                                    </tr>
+                                </table>
+                            </div>
+                        </td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+            <div style="background:#356cc7;background-color:#356cc7;Margin:0px auto;max-width:600px;">
+                <table border="0" cellpadding="0" cellspacing="0" role="presentation" style="vertical-align:top;" width="100%">
+                    <tbody>
+                    <tr>
+                        <td>
+                            <img style="max-width:100%;margin-left: 10%"
+                                src="' . get_image($template->VehicleType->vehicleTypeImage, 'vehicle', $booking->merchant_id) . '"
+                                width="100" height="100" />
+                        </td>
+                        <td>
+                            <h3 style="color:white;font-size:1.1rem;">
+                            <br />' . $calculate = $template->VehicleType->LanguageVehicleTypeSingle == "" ? $template->VehicleType->LanguageVehicleTypeAny->vehicleTypeName . ' - ' . $template->DriverVehicle->vehicle_number : $template->VehicleType->LanguageVehicleTypeSingle->vehicleTypeName . ' - ' . $template->DriverVehicle->vehicle_number . '</h3>
+                             <h3 style="color:white;font-size:1.1rem;">Payment Mode : ' . $cash_string . '</h3>
+                          
+                        </td>';
+                        if (!empty($temp->social_links))
+                        {
+                        $social_links = get_object_vars(json_decode($temp->social_links));
+                        $social_links = $social_links['links'];
+                        $message.='<td>';
+                            if(isset($social_links->twitter) && !empty($social_links->twitter))
+                            {
+                                // $message.='<a class="text-dark" href="'.$social_links->twitter.'" target="_blank"><i style="font-size:35px" class="fa fa-twitter-square"></i></a>';
+                                $message.='<a class="text-dark" href="'.$social_links->twitter.'" target="_blank"><img src="'.url('/basic-images/twitter2x.png').'" width="40px" alt="Image"/></a>';
+                            }
+                            if(isset($social_links->facebook) && !empty($social_links->facebook))
+                            {
+                                // $message.='<a class="text-dark" href="'.$social_links->facebook.'" target="_blank"><i style="font-size:35px" class="fa fa-facebook-square"></i></a>';
+                                $message.='<a class="text-dark" href="'.$social_links->facebook.'" target="_blank"><img src="'.url('/basic-images/facebook2x.png').'" width="40px" alt="Image"/></a>';
+                            }
+                            if(isset($social_links->instagram) && !empty($social_links->instagram))
+                            {
+                                // $message.='<a class="text-dark" href="'.$social_links->instagram.'" target="_blank"><i style="font-size:35px" class="fa fa-instagram"></i></a>';
+                                $message.='<a class="text-dark" href="'.$social_links->instagram.'" target="_blank"><img src="'.url('/basic-images/instagram2x.png').'" width="40px" alt="Image"/></a>';
+                            }
+                            if(isset($social_links->linkedin) && !empty($social_links->linkedin))
+                            {
+                                // $message.='<a class="text-dark" href="'.$social_links->linkedin.'" target="_blank"><i style="font-size:35px" class="fa fa-linkedin-square"></i></a>';
+                                $message.='<a class="text-dark" href="'.$social_links->linkedin.'" target="_blank"><img src="'.url('/basic-images/linkedin2x.png').'" width="40px" alt="Image"/></a>';
+                            }
+                            $message.='</td>';
+                        }
+             $message.='</tr>
+                    <tr>
+                        <td colspan="3"> <p style="border-top:solid 2px #ffffff;width:100%;"></p> </td>
+                    </tr>
+                    <tr>
+                        <td align="center" colspan="3"
+                            style="padding:10px 25px;padding-top:20px;padding-right:25px;padding-bottom:20px;padding-left:25px;word-break:break-word;">
+                            <div style="font-size:15px;line-height:1;text-align:center;color:#FFFFFF;">
+                                Thanks <br/><br/> <span style="font-size:20px">' . $template['name'] . '</span></div>
+                        </td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+    </div>
+</body>
+</html>';
+// echo $message;die;
+            $email = isset($template->another_email) ? $template->another_email : $template->user->email;
+                $response = $this->sendMail($configuration, $email,$message, 'ride_invoice');
+            //            try {
+//                $mail = new PHPMailer(true);
+//                $mail->SMTPDebug = 0;
+//                $mail->isSMTP();
+//                $mail->Host = $configuration->host;
+//                $mail->SMTPAuth = true;
+//                $mail->Username = $configuration->username;
+//                $mail->Password = $configuration->password;
+//                $mail->SMTPSecure = $configuration->encryption;
+//                $mail->Port = $configuration->port;
+//
+//                //Recipients
+//                $mail->setFrom($configuration->username);
+//                $mail->addAddress($template->user->email);
+//
+//                //Content
+//                $mail->isHTML(true);
+//                $mail->Subject = 'Ride Invoice';
+//                $mail->Body = $message;
+//                $mail->AltBody = $template['message'];
+//
+//                $mail->send();
+//
+//            } catch (Exception $e) {
+//                $e->getMessage();
+//                //echo 'Message could not be sent. Mailer Error: ', $mail->ErrorInfo;
+//            }
+        // endif;
+    }
+}

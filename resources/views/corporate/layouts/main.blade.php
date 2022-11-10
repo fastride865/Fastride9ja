@@ -1,0 +1,5 @@
+@include('corporate.element.header')
+@include('corporate.element.nav')
+@include('corporate.element.sidebar')
+@yield('content')
+@include('corporate.element.footer')

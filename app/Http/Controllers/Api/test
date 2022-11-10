@@ -1,0 +1,13 @@
+1)This application is developed in laravel framework (6) of php and mysql database (5.14).
+2) As we know Laravel follows MVC pattern means Model, view & controller
+3) This application is divided into 2 part, mobile application and admin panel/backend
+4) Mobile application communicates with server by APIs, Before discussing APIs part
+5) Let's first discuss the directory of the application
+6)
+   a) .env
+   b) routes
+   c) config
+   .... then all folders one by one
+7) Now come to the code, how to structured for admin panel and mobile application
+8) Whenever a requests hit first of all its calling route file
+    function name @ file path

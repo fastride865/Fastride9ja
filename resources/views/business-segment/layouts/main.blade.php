@@ -1,0 +1,5 @@
+@include('business-segment.element.header')
+@include('business-segment.element.nav')
+@include('business-segment.element.sidebar')
+@yield('content')
+@include('business-segment.element.footer')

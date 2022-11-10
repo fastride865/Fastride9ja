@@ -1,0 +1,4 @@
+[08-Jan-2019 19:25:52 Etc/GMT] PHP Fatal error:  Uncaught Error: Call to undefined function env() in /home/apporiotaxi/public_html/config/cache.php:18
+Stack trace:
+#0 {main}
+  thrown in /home/apporiotaxi/public_html/config/cache.php on line 18

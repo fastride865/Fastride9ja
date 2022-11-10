@@ -1,0 +1,199 @@
+@extends('hotel.layouts.main')
+@section('content')
+    <div class="page">
+        <div class="page-content container-fluid">
+            @if(session('sosadded'))
+                <div class="col-md-6 alert alert-icon-right alert-info alert-dismissible mb-2" role="alert">
+                    <span class="alert-icon"><i class="fa fa-info"></i></span>
+                    <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+                        <span aria-hidden="true">×</span>
+                    </button>
+                    <strong>@lang("$string_file.notification")</strong>
+                </div>
+            @endif
+            <div class="panel panel-bordered">
+                <header class="panel-heading">
+                    <div class="panel-actions"></div>
+                    <h3 class="panel-title">
+                        <i class="fas fa-universal-access" aria-hidden="true"></i>
+                        @lang("$string_file.reviews_and_symbol_ratings")</h3>
+                </header>
+                <div class="panel-body container-fluid">
+                    <form method="post" action="{{ route('hotel.ratings.search') }}">
+                        @csrf
+                        <div class="table_search row">
+                            <div class="col-md-2 col-xs-12 form-group ">
+                                <div class="input-group">
+                                    <input type="text" id="" name="booking_id"
+                                           placeholder="@lang("$string_file.ride_id")"
+                                           class="form-control col-md-12 col-xs-12">
+                                </div>
+                            </div>
+                            <div class="col-md-2 col-xs-12 form-group ">
+                                <div class="input-group">
+                                    <input type="text" id="" name="rider"
+                                           placeholder="@lang("$string_file.user_details")"
+                                           class="form-control col-md-12 col-xs-12">
+                                </div>
+                            </div>
+                            <div class="col-md-2 col-xs-12 form-group ">
+                                <div class="input-group">
+                                    <input type="text" id="" name="driver"
+                                           placeholder="@lang("$string_file.driver_details")"
+                                           class="form-control col-md-12 col-xs-12">
+                                </div>
+                            </div>
+
+                            <div class="col-sm-2  col-xs-12 form-group ">
+                                <button class="btn btn-primary" type="submit" name="seabt12"><i
+                                            class="fa fa-search" aria-hidden="true"></i>
+                                </button>
+                            </div>
+                            {{--                                <div class="col-sm-4 float-right form-group">--}}
+                            {{--                                    <a href="{{route('excel.ratings')}}">--}}
+                            {{--                                        <button type="button" class="btn btn-icon btn-primary float-right mr-1" data-original-title="@lang("$string_file.export_excel")" data-toggle="tooltip"><i--}}
+                            {{--                                                    class="fa fa-download"></i>--}}
+                            {{--                                        </button>--}}
+                            {{--                                    </a>--}}
+                            {{--                                </div>--}}
+                        </div>
+                    </form>
+                    <table class="display nowrap table table-hover table-striped w-full" id="customDataTable" style="width:100%">
+                        <thead>
+                        <tr>
+                            <th>@lang("$string_file.sn")</th>
+                            <th>@lang("$string_file.ride_id")</th>
+                            <th>@lang("$string_file.ride_type")</th>
+                            <th>@lang("$string_file.user_details")</th>
+                            <th>@lang("$string_file.rating_by_user") </th>
+                            <th>@lang("$string_file.user")  @lang("$string_file.review")</th>
+                            <th>@lang("$string_file.driver_details")</th>
+                            <th>@lang("$string_file.rating")  @lang("$string_file.by_driver")</th>
+                            <th>@lang("$string_file.driver")  @lang("$string_file.review")</th>
+                            <th>@lang("$string_file.date_and_symbol_time")</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        @php $sr = $ratings->firstItem() @endphp
+                        @foreach($ratings as $rating)
+                            <tr>
+                                <td>{{ $sr }}</td>
+                                <td><a target="_blank" class="address_link"
+                                       href="{{ route('hotel.booking.details',$rating->booking_id) }}">{{ $rating->Booking->merchant_booking_id }}</a>
+                                </td>
+                                <td>
+                                    @if($rating->Booking->booking_type == 1)
+                                        @lang("$string_file.ride_now")
+                                    @else
+                                        @lang("$string_file.ride")  @lang("$string_file.later")
+                                    @endif
+                                </td>
+
+                                @if(Auth::user()->demo == 1)
+                                    <td>
+                                            <span class="long_text">
+                                                {{ "********".substr($rating->Booking->User->UserName,-2) }}
+                                               <br>
+                                               {{ "********".substr($rating->Booking->User->UserPhone,-2) }}
+                                               <br>
+                                              {{ "********".substr($rating->Booking->User->email,-2) }}
+                                            </span>
+                                    </td>
+                                @else
+                                    <td>
+                                            <span class="long_text">
+                                                {{ $rating->Booking->User->UserName }}
+                                               <br>
+                                               {{ $rating->Booking->User->UserPhone }}
+                                               <br>
+                                              {{ $rating->Booking->User->email }}
+                                            </span>
+                                    </td>
+                                @endif
+                                <td>
+                                    @if ($rating->user_rating_points)
+                                        @while($rating->user_rating_points>0)
+                                            @if($rating->user_rating_points >0.5)
+                                                <img src="{{ view_config_image("static-images/star.png") }}"
+                                                     alt='Whole Star'>
+                                            @else
+                                                <img src="{{ view_config_image('static-images/halfstar.png') }}"
+                                                     alt='Half Star'>
+                                            @endif
+                                            @php $rating->user_rating_points--; @endphp
+                                        @endwhile
+                                    @else
+                                        @lang("$string_file.not_rated_yet")
+                                    @endif
+                                </td>
+
+                                <td>
+                                    @if($rating->user_comment)
+                                        {{ $rating->user_comment }}
+                                    @else
+                                        ------
+                                    @endif
+                                </td>
+                                @if(Auth::user()->demo == 1)
+                                    <td>
+                                            <span class="long_text">
+                                                 {{ "********".substr($rating->Booking->Driver->last_name,-2) }}
+                                            <br>
+                                            {{ "********".substr($rating->Booking->Driver->phoneNumber,-2) }}
+                                            <br>
+                                            {{ "********".substr($rating->Booking->Driver->email,-2) }}
+                                                </span>
+                                    </td>
+                                @else
+                                    <td>
+                                            <span class="long_text">
+                                                 {{ $rating->Booking->Driver->first_name." ".$rating->Booking->Driver->last_name }}
+                                            <br>
+                                            {{ $rating->Booking->Driver->phoneNumber }}
+                                            <br>
+                                            {{ $rating->Booking->Driver->email }}
+                                                </span>
+                                    </td>
+                                @endif
+                                <td>
+                                    @if ($rating->driver_rating_points)
+                                        @while($rating->driver_rating_points>0)
+                                            @if($rating->driver_rating_points >0.5)
+                                                <img src="{{ view_config_image("static-images/star.png") }}"
+                                                     alt='Whole Star'>
+                                            @else
+                                                <img src="{{ view_config_image('static-images/halfstar.png') }}"
+                                                     alt='Half Star'>
+                                            @endif
+                                            @php $rating->driver_rating_points--; @endphp
+                                        @endwhile
+                                    @else
+                                        @lang("$string_file.not_rated_yet")
+                                    @endif
+
+                                </td>
+                                <td>
+                                    @if($rating->driver_comment)
+                                        {{ $rating->driver_comment }}
+                                    @else
+                                        ------
+                                    @endif
+                                </td>
+                                <td>
+                                    {!! convertTimeToUSERzone($rating->created_at, $booking->Booking->Driver->CountryArea->timezone,null,$booking->Booking->Merchant) !!}
+                                </td>
+                            </tr>
+                            @php $sr++;  @endphp
+                        @endforeach
+                        </tbody>
+
+                    </table>
+
+                    <div class="pagination1 float-right">{{ $ratings->links() }}</div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+@endsection
+

@@ -1,0 +1,5 @@
+@include('driver-agency.element.header')
+@include('driver-agency.element.sidebar')
+@include('driver-agency.element.nav')
+@yield('content')
+@include('driver-agency.element.footer')
