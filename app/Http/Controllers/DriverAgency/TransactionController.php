@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Http\Controllers\Taxicompany;
+namespace App\Http\Controllers\DriverAgency;
 
 use App\Models\Booking;
 use App\Models\BookingDetail;

@@ -1,0 +1,80 @@
+[2022-11-17 15:37:29] local.ERROR: During class fetch: Uncaught ErrorException: Required parameter $support follows optional parameter $merchant_id in C:\laragon\www\Fastride\Fastride9ja\app\Traits\MerchantTrait.php:481
+Stack trace:
+#0 C:\laragon\www\Fastride\Fastride9ja\vendor\composer\ClassLoader.php(571): Illuminate\Foundation\Bootstrap\HandleExceptions->handleError(8192, 'Required parame...', 'C:\\laragon\\www\\...', 481)
+#1 C:\laragon\www\Fastride\Fastride9ja\vendor\composer\ClassLoader.php(571): include()
+#2 C:\laragon\www\Fastride\Fastride9ja\vendor\composer\ClassLoader.php(428): Composer\Autoload\includeFile('C:\\laragon\\www\\...')
+#3 C:\laragon\www\Fastride\Fastride9ja\app\Providers\ComposerServiceProvider.php(11): Composer\Autoload\ClassLoader->loadClass('App\\Traits\\Merc...')
+#4 C:\laragon\www\Fastride\Fastride9ja\vendor\composer\ClassLoader.php(571): include('C:\\laragon\\www\\...')
+#5 C:\laragon\www\Fastride\Fastride9ja\vendor\composer\ClassLoader.php(428): Composer\Autoload\includeFile('C:\\laragon\\www\\...')
+#6 C:\laragon\www\Fastride\Fastride9ja\vendor\laravel\framework\src\Illuminate\Foundation\Application.php(679): Composer\Autoload\ClassLoader->loadClass('App\\Providers\\C...')
+#7 C:\laragon\www\Fastride\Fastride9ja\vendor\laravel\framework\src\Illuminate\Foundation\Application.php(613): Illuminate\Foundation\Application->resolveProvider('App\\Providers\\C...')
+#8 C:\laragon\www\Fastride\Fastride9ja\vendor\laravel\framework\src\Illuminate\Foundation\ProviderRepository.php(75): Illuminate\Foundation\Application->register('App\\Providers\\C...')
+#9 C:\laragon\www\Fastride\Fastride9ja\vendor\laravel\framework\src\Illuminate\Foundation\Application.php(593): Illuminate\Foundation\ProviderRepository->load(Array)
+#10 C:\laragon\www\Fastride\Fastride9ja\vendor\laravel\framework\src\Illuminate\Foundation\Bootstrap\RegisterProviders.php(17): Illuminate\Foundation\Application->registerConfiguredProviders()
+#11 C:\laragon\www\Fastride\Fastride9ja\vendor\laravel\framework\src\Illuminate\Foundation\Application.php(219): Illuminate\Foundation\Bootstrap\RegisterProviders->bootstrap(Object(Illuminate\Foundation\Application))
+#12 C:\laragon\www\Fastride\Fastride9ja\vendor\laravel\framework\src\Illuminate\Foundation\Console\Kernel.php(320): Illuminate\Foundation\Application->bootstrapWith(Array)
+#13 C:\laragon\www\Fastride\Fastride9ja\vendor\laravel\framework\src\Illuminate\Foundation\Console\Kernel.php(129): Illuminate\Foundation\Console\Kernel->bootstrap()
+#14 C:\laragon\www\Fastride\Fastride9ja\artisan(37): Illuminate\Foundation\Console\Kernel->handle(Object(Symfony\Component\Console\Input\ArgvInput), Object(Symfony\Component\Console\Output\ConsoleOutput))
+#15 {main} {"exception":"[object] (Symfony\\Component\\Debug\\Exception\\FatalErrorException(code: 1): During class fetch: Uncaught ErrorException: Required parameter $support follows optional parameter $merchant_id in C:\\laragon\\www\\Fastride\\Fastride9ja\\app\\Traits\\MerchantTrait.php:481
+Stack trace:
+#0 C:\\laragon\\www\\Fastride\\Fastride9ja\\vendor\\composer\\ClassLoader.php(571): Illuminate\\Foundation\\Bootstrap\\HandleExceptions->handleError(8192, 'Required parame...', 'C:\\\\laragon\\\\www\\\\...', 481)
+#1 C:\\laragon\\www\\Fastride\\Fastride9ja\\vendor\\composer\\ClassLoader.php(571): include()
+#2 C:\\laragon\\www\\Fastride\\Fastride9ja\\vendor\\composer\\ClassLoader.php(428): Composer\\Autoload\\includeFile('C:\\\\laragon\\\\www\\\\...')
+#3 C:\\laragon\\www\\Fastride\\Fastride9ja\\app\\Providers\\ComposerServiceProvider.php(11): Composer\\Autoload\\ClassLoader->loadClass('App\\\\Traits\\\\Merc...')
+#4 C:\\laragon\\www\\Fastride\\Fastride9ja\\vendor\\composer\\ClassLoader.php(571): include('C:\\\\laragon\\\\www\\\\...')
+#5 C:\\laragon\\www\\Fastride\\Fastride9ja\\vendor\\composer\\ClassLoader.php(428): Composer\\Autoload\\includeFile('C:\\\\laragon\\\\www\\\\...')
+#6 C:\\laragon\\www\\Fastride\\Fastride9ja\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Application.php(679): Composer\\Autoload\\ClassLoader->loadClass('App\\\\Providers\\\\C...')
+#7 C:\\laragon\\www\\Fastride\\Fastride9ja\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Application.php(613): Illuminate\\Foundation\\Application->resolveProvider('App\\\\Providers\\\\C...')
+#8 C:\\laragon\\www\\Fastride\\Fastride9ja\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\ProviderRepository.php(75): Illuminate\\Foundation\\Application->register('App\\\\Providers\\\\C...')
+#9 C:\\laragon\\www\\Fastride\\Fastride9ja\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Application.php(593): Illuminate\\Foundation\\ProviderRepository->load(Array)
+#10 C:\\laragon\\www\\Fastride\\Fastride9ja\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Bootstrap\\RegisterProviders.php(17): Illuminate\\Foundation\\Application->registerConfiguredProviders()
+#11 C:\\laragon\\www\\Fastride\\Fastride9ja\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Application.php(219): Illuminate\\Foundation\\Bootstrap\\RegisterProviders->bootstrap(Object(Illuminate\\Foundation\\Application))
+#12 C:\\laragon\\www\\Fastride\\Fastride9ja\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Console\\Kernel.php(320): Illuminate\\Foundation\\Application->bootstrapWith(Array)
+#13 C:\\laragon\\www\\Fastride\\Fastride9ja\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Console\\Kernel.php(129): Illuminate\\Foundation\\Console\\Kernel->bootstrap()
+#14 C:\\laragon\\www\\Fastride\\Fastride9ja\\artisan(37): Illuminate\\Foundation\\Console\\Kernel->handle(Object(Symfony\\Component\\Console\\Input\\ArgvInput), Object(Symfony\\Component\\Console\\Output\\ConsoleOutput))
+#15 {main} at C:\\laragon\\www\\Fastride\\Fastride9ja\\app\\Providers\\ComposerServiceProvider.php:11)
+[stacktrace]
+#0 {main}
+"} 
+[2022-11-17 16:49:02] local.INFO: array (
+  'header' => 
+  array (
+    'user-agent' => 
+    array (
+      0 => 'PostmanRuntime/7.29.2',
+    ),
+    'accept' => 
+    array (
+      0 => '*/*',
+    ),
+    'cache-control' => 
+    array (
+      0 => 'no-cache',
+    ),
+    'postman-token' => 
+    array (
+      0 => '7b21d0c7-94d7-4384-bdb0-3c9a9e2a36a2',
+    ),
+    'host' => 
+    array (
+      0 => '127.0.0.1:8000',
+    ),
+    'accept-encoding' => 
+    array (
+      0 => 'gzip, deflate, br',
+    ),
+    'connection' => 
+    array (
+      0 => 'keep-alive',
+    ),
+    'cookie' => 
+    array (
+      0 => 'fastride_session=CsqoBbw7SbgeuX4mypkrsXPcv1cmI65jtLEVmAhq',
+    ),
+  ),
+  'api' => 'http://127.0.0.1:8000/api/time',
+  'Request' => 
+  array (
+  ),
+  'response' => '{"result":"1","message":"Time Stamp","time":1668703742}',
+)  
